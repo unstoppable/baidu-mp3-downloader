@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:SkinnableContainer xmlns:fx="http://ns.adobe.com/mxml/2009" xmlns:s="library://ns.adobe.com/flex/spark" xmlns:mx="library://ns.adobe.com/flex/mx" creationComplete="skinnablecontainer1_creationCompleteHandler(event)">
+	<fx:Declarations>
+		<!-- Place non-visual elements (e.g., services, value objects) here -->
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import mx.events.FlexEvent;
+
+			protected var timer:Timer;
+
+			[Bindable]
+			public var isPlaying:Boolean=false;
+			[Bindable]
+			public var timeTotal:String;
+			[Bindable]
+			public var timeCurrent:String;
+
+			private var _xdata:DownloadVO;
+
+
+			[Bindable]
+			public function get xdata():DownloadVO
+			{
+				return _xdata;
+			}
+
+			public function set xdata(value:DownloadVO):void
+			{
+				if (_xdata == value)
+					return;
+				_xdata=value;
+				timer.stop();
+				
+				if(channel){
+					channel.stop();
+				}
+
+				sound = new Sound();
+				sound.load(new URLRequest(value.nativePath));
+				channel=sound.play();
+				timer.start();
+				isPlaying=true;
+			}
+
+			public function trigglePause():void
+			{
+				if (!channel)
+					return;
+				if (isPlaying)
+				{
+					channel.stop();
+					timer.stop();
+				}
+				else
+				{
+					timer.start();
+					channel=sound.play();
+				}
+				isPlaying=!isPlaying;
+			}
+
+			public var sound:Sound=new Sound();
+			public var channel:SoundChannel;
+
+
+			protected function skinnablecontainer1_creationCompleteHandler(event:FlexEvent):void
+			{
+				timer=new Timer(200);
+				timer.addEventListener(TimerEvent.TIMER, onTimer);
+			}
+
+			protected function onTimer(e:*):void
+			{
+				timeTotal=toTimeString(sound.length/1000);
+				timeCurrent=toTimeString(channel.position/1000);
+			}
+
+
+			protected function toTimeString(sec:Number):String
+			{
+				var minute:Number=Math.floor(sec / 60);
+				var lastSec:Number=Math.floor(sec % 60);
+				minute=isNaN(minute) ? 0 : minute;
+				lastSec=isNaN(lastSec) ? 0 : lastSec;
+				return formatTime(minute) + ':' + formatTime(lastSec);
+			}
+
+			protected function formatTime(time:Number):String
+			{
+				return time < 10 ? '0' + time : new String(time);
+			}
+		]]>
+	</fx:Script>
+</s:SkinnableContainer>

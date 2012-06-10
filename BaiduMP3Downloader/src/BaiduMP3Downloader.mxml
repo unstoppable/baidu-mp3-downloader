@@ -1,0 +1,476 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:WindowedApplication xmlns:fx="http://ns.adobe.com/mxml/2009" xmlns:s="library://ns.adobe.com/flex/spark" xmlns:mx="library://ns.adobe.com/flex/mx" creationComplete="windowedapplication1_creationCompleteHandler(event)"
+					   minWidth="960" minHeight="500" title="为芽芽专门定做:)  lhw1987654@163.com" fontSize="14" fontFamily="微软雅黑"
+					   xmlns:local="*" currentState="normal" showStatusBar="false">
+	<fx:Script>
+		<![CDATA[
+			import mx.collections.XMLListCollection;
+			import mx.controls.Alert;
+			import mx.events.FlexEvent;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			
+			import air.update.ApplicationUpdaterUI;
+			import air.update.events.UpdateEvent;
+			
+			import mx.events.FlexEvent;
+			import mx.logging.Log;
+			import mx.logging.LogEventLevel;
+			import mx.logging.targets.TraceTarget;
+
+			
+			protected function windowedapplication1_creationCompleteHandler(event:FlexEvent):void
+			{	
+				this.addEventListener("audoPlay", onAudoPlay);
+				initLogging();
+				this.checkUpdate();
+			}
+			
+			protected var appUpdater:ApplicationUpdaterUI=new ApplicationUpdaterUI(); // Used for auto-update
+			
+			
+			// Initialize appUpdater and set some properties
+			[Bindable]
+			private var info:String;
+			protected function checkUpdate():void
+			{
+				// set the URL for the update.xml file
+				appUpdater.updateURL="http://www.raisedtech.com/BaiduMP3Downloader/BaiduMP3Downloader.update.xml";
+				appUpdater.addEventListener(UpdateEvent.INITIALIZED, onUpdate);
+				appUpdater.addEventListener(ErrorEvent.ERROR, onUpdaterError);
+				appUpdater.isCheckForUpdateVisible=false;
+				appUpdater.isFileUpdateVisible=false;
+				appUpdater.isInstallUpdateVisible=false;
+				appUpdater.initialize();
+			}
+			
+			// Handler function triggered by the ApplicationUpdater.initialize.
+			// The updater was initialized and it is ready to take commands.
+			protected function onUpdate(event:UpdateEvent):void
+			{
+				// start the process of checking for a new update and to install
+				trace(event);
+				appUpdater.checkNow();
+			}
+			
+			// Handler function for error events triggered by the ApplicationUpdater.initialize
+			protected function onUpdaterError(event:ErrorEvent):void
+			{
+				trace(event);
+			}
+			
+			private function initLogging():void
+			{
+				/* Create a target. */
+				var logTarget:TraceTarget=new TraceTarget();
+				logTarget.level=LogEventLevel.ALL;
+				logTarget.includeDate=false;
+				logTarget.includeTime=true;
+				logTarget.includeCategory=true;
+				logTarget.includeLevel=true;
+				
+				/* Begin logging. */
+				Log.addTarget(logTarget);
+			}
+			
+			protected function onAudoPlay(evt:ResultEvent):void{
+				var data:Object = evt.result;
+				if(currentState=="normal"){
+				
+				}else{
+					this.player.xdata = data as DownloadVO;
+				}
+			}
+			
+			/////////////////////////////////////////////////////////////////////////////////
+			/////////////////////////////////////////////////////////////////////////////////
+			/////////////////////////////////////////////////////////////////////////////////
+			
+			protected var listService:URLLoader;
+			protected var listServiceReq:URLRequest
+			protected var listServiceCache:Dictionary = new Dictionary();
+			
+			[Bindable]
+			protected var listServiceResult:XMLListCollection=new XMLListCollection();
+			
+			protected function loadbt_clickHandler(arg:*):String
+			{
+				listServiceResult = new XMLListCollection();
+				if(!listService){
+					listService = new URLLoader();
+					listService.dataFormat = URLLoaderDataFormat.BINARY;
+					listService.addEventListener(Event.COMPLETE, listService_resultHandler);
+					listService.addEventListener(IOErrorEvent.IO_ERROR, listService_faultHandler);
+					listServiceReq = new URLRequest();
+				}else{
+					try{listService.close();}catch(e:*){}
+				}
+				listServiceReq.url= arg is String?arg:urlInput.text;
+				if(null!=listServiceCache[listServiceReq.url]){
+					listServiceResult =listServiceCache[listServiceReq.url]
+				}else{
+					listService.load(listServiceReq);
+				}
+				return listServiceReq.url;
+			}
+			
+			protected function listService_resultHandler(event:Event):void
+			{
+				var BA:ByteArray = new ByteArray;      
+				BA.writeBytes(listService.data);     
+				BA.position = 0;
+				var xml:XML = XML(BA.readMultiByte(BA.length, "GBK"));
+				listServiceResult = new XMLListCollection(xml.data);
+				listServiceCache[listServiceReq.url] = listServiceResult;
+			}
+			
+			
+			protected function listService_faultHandler(event:Event):void
+			{
+				Alert.show(event.toString(),"reading list error");
+			}
+			
+			
+			/////////////////////////////////////////////////////////////////////////////////
+			/////////////////////////////////////////////////////////////////////////////////
+			/////////////////////////////////////////////////////////////////////////////////
+
+			private var index:int=0;
+			[Bindable]
+			private var list:ArrayCollection=new ArrayCollection();
+			private var currentData:DownloadVO;
+			private var downloader:URLLoader;
+			private var selectedFolder:File;
+			
+			
+			protected function downloadAll_clickHandler(event:MouseEvent):void
+			{
+				currentState = "downloading";
+				var fr:File = new File();
+				fr.addEventListener(Event.SELECT, onFolderSelected);
+				fr.browseForDirectory("选择一个目录");
+				
+			
+			}
+
+			protected function onFolderSelected(evt:Event):void{
+				var fr:File =  File(evt.target);
+				fr.removeEventListener(Event.SELECT, onFolderSelected);
+				selectedFolder = fr;
+				startDownload(listServiceResult.toArray());	
+			}
+			protected function startDownload(source:Array):void
+			{
+				list.removeAll();
+				for each (var data:XML in source)
+				{
+					trace(data.name);
+					//http://box.zhangmen.baidu.com/x?op=12&count=1&mtype=1&title=%E6%B2%A1%E9%82%A3%E4%B9%88%E7%AE%80%E5%8D%95$$%E9%BB%84%E5%B0%8F%E7%90%A5$$$$&url=&listenreelect=0
+					var url:String="http://box.zhangmen.baidu.com/x?op=12&count=1&mtype=1&title=";
+					url+=data.name;
+					url+="&url=&listenreelect=0";
+					
+					var filename:String=data.name;
+					filename=filename.replace("$$", "-");
+					filename=filename.replace("$$$$", ".mp3");
+					
+					list.addItem(new DownloadVO(filename,url,data));
+				}
+				
+				index=0;
+				doRequest();
+			}
+
+			protected function doRequest():void
+			{
+				if (list.length <= index)
+				{
+					out.appendText("\nfinished");
+					return;
+				}
+				currentData = list[index];
+				currentData.data.@status="requesting real url";
+				service.url=currentData.url;
+				service.send();
+			}
+
+			/*
+			 *
+			   <result>
+			   <count>1</count>
+			   <url>
+			   <encode>http://zhangmenshiting.baidu.com/data/music/1735828/VndpWW1uXHFiV3hpWndsXXN2WHlqW3BuVmt2WXpsXHl0V3RmWntrXXN2WHVlZKSoZHGrl6SanHWVY5hpl5uZa2qYaJdmbJtslWlrbGiYnZ5ilZZrampucDE$</encode>
+			   <decode>%E6%88%91%E5%A5%BD%E5%96%9C%E6%AC%A2%E4%BD%A0.mp3?xcode=d1e5beb39f5c16d4d7883bff1cc75478</decode>
+			   <type>8</type>
+			   <lrcid>908446</lrcid>
+			   <flag>1</flag>
+			   </url>
+			   <p2p>
+			   <hash>ef180d26c29466ca9a458cecb885cace8739858d</hash>
+			   </p2p>
+			   </result>
+
+			 */
+			protected function service_resultHandler(event:ResultEvent):void
+			{
+				var xml:XML=XML(event.result);
+				var url:XMLList=xml.url;
+				if (url.length() > 0)
+				{
+					var x:XML=url[0];
+					var encode:String=x.encode;
+					var decode:String=x.decode;
+					encode=encode.substring(0, encode.lastIndexOf("/") + 1) + decode;
+					currentData.real=encode;
+					out.appendText("\n" + index + ":" + currentData.name + ":" + encode);
+
+					progress.setProgress(0, 1);
+					progress.label="正在下载" + currentData.name;
+
+					
+					var file:File=File.desktopDirectory.resolvePath(selectedFolder.nativePath+"/" + currentData.name);
+					if (file.exists)
+					{
+						out.appendText("\n已下载:" + index + ":" + currentData.name + ":" +file.nativePath);
+						currentData.loadPercent=100;
+						currentData.stutas = "saved OK:"+file.nativePath;
+						currentData.nativePath=file.nativePath;
+						index++;
+						doRequest();
+					}
+					else
+					{
+						currentData.stutas = "downloading";
+						var req:URLRequest=new URLRequest(encode);
+						req.method=URLRequestMethod.GET;
+						req.requestHeaders=[new URLRequestHeader("referer", "http://www.baidu.com")];
+						var loader:URLLoader=new URLLoader();
+						downloader = loader;
+						loader.dataFormat=URLLoaderDataFormat.BINARY;
+						loader.addEventListener(Event.COMPLETE, onComplete);
+						loader.addEventListener(HTTPStatusEvent.HTTP_STATUS, onComplete);
+						loader.addEventListener(ProgressEvent.PROGRESS, onComplete);
+						loader.addEventListener(IOErrorEvent.IO_ERROR, onComplete);
+						loader.addEventListener(SecurityErrorEvent.SECURITY_ERROR, onComplete);
+						loader.load(req);
+					}
+				}
+				else
+				{
+					index++;
+					doRequest();
+				}
+			}
+
+
+			protected function service_faultHandler(event:FaultEvent):void
+			{
+				currentData.stutas = "Error:"+event;
+				out.appendText("\n" + index + ":" + event);
+				index++;
+				doRequest();
+			}
+
+			protected function onComplete(event:Event):void
+			{
+				var loader:URLLoader=URLLoader(event.target);
+				if (HTTPStatusEvent.HTTP_STATUS == event.type)
+				{
+					var hs:HTTPStatusEvent=HTTPStatusEvent(event);
+					var info:String="";
+
+					for each (var x:URLRequestHeader in hs.responseHeaders)
+					{
+						info+=x.name + "=" + x.value + ";";
+					}
+					out.appendText("\nresponse code:" + hs.status + "\t" + info);
+
+				}
+				else if (ProgressEvent.PROGRESS == event.type)
+				{
+					var pe:ProgressEvent=ProgressEvent(event);
+					progress.setProgress(pe.bytesLoaded, pe.bytesTotal);
+					progress.label="正在下载 [" + index + "][" + currentData.name + "]," + Math.round(progress.percentComplete) + "%";
+					currentData.loadPercent = Math.round(progress.percentComplete);
+				}
+				else
+				{
+					loader.removeEventListener(Event.COMPLETE, onComplete);
+					loader.removeEventListener(ProgressEvent.PROGRESS, onComplete);
+					loader.removeEventListener(IOErrorEvent.IO_ERROR, onComplete);
+					loader.removeEventListener(SecurityErrorEvent.SECURITY_ERROR, onComplete);
+					if (Event.COMPLETE == event.type)
+					{
+						var data:ByteArray=loader.data;
+
+						var file:File=File.desktopDirectory.resolvePath(selectedFolder.nativePath+"/" + currentData.name);
+
+						out.appendText("\nsaving to" + file.nativePath);
+
+						var stream:FileStream=new FileStream();
+						stream.open(file, FileMode.WRITE);
+						stream.writeBytes(data);
+						stream.close();
+						
+						currentData.stutas = "saved OK:"+file.nativePath;
+						currentData.nativePath=file.nativePath;
+					}
+					else
+					{
+						out.appendText("\n" + index + ":" + ErrorEvent(event).text);
+						currentData.stutas = "Error:"+ErrorEvent(event).text;
+					}
+					index++;
+					doRequest();
+				}
+			}
+
+			protected function urlParser(xml:XML):String{
+				//http://box.zhangmen.baidu.com/x?op=22&listid=3&.r=0.6450725851966039
+				//<data><id>600</id><name>S.H.E</name><tcount>127</tcount><isnew>0</isnew></data>
+				
+				var url:String = "http://box.zhangmen.baidu.com/x?op=22&listid={id}";
+				var id:String = xml.id;
+				url=url.replace("{id}",id);
+				return url;
+			}
+
+
+			protected function canceldAll_clickHandler(event:MouseEvent):void
+			{
+				downloader.close();
+				currentState="normal";
+			}
+
+		]]>
+	</fx:Script>
+	<fx:Declarations>
+		<s:HTTPService id="service" result="service_resultHandler(event)" fault="service_faultHandler(event)" resultFormat="xml"/>
+	</fx:Declarations>
+	<s:states>
+		<s:State name="normal">
+			
+		</s:State>
+		<s:State name="downloading">
+			
+		</s:State>
+	</s:states>
+	<s:Group includeIn="normal" left="0" top="0" bottom="0" right="0">
+		<s:ComboBox id="cateBox" left="0" top="0" width="200" height="35" selectedIndex="0">
+			<s:dataProvider>
+				<s:ArrayCollection>
+					<local:CateData >
+						<local:label><fx:String>榜单家族</fx:String></local:label>
+						<local:data><fx:XML xmlns="">
+										<result><count>17</count><data><id>2</id><name>新歌TOP100</name><tcount>100</tcount><isnew>0</isnew></data><data><id>1</id><name>中文金曲榜</name><tcount>10</tcount><isnew>0</isnew></data><data><id>3</id><name>歌曲TOP500</name><tcount>500</tcount><isnew>0</isnew></data><data><id>4</id><name>dj舞曲</name><tcount>120</tcount><isnew>0</isnew></data><data><id>113</id><name>日韩流行风</name><tcount>120</tcount><isnew>0</isnew></data><data><id>112</id><name>欧美金曲</name><tcount>120</tcount><isnew>0</isnew></data><data><id>110</id><name>摇滚歌曲榜</name><tcount>330</tcount><isnew>0</isnew></data><data><id>103</id><name>热门对唱</name><tcount>210</tcount><isnew>0</isnew></data><data><id>100</id><name>影视金曲</name><tcount>330</tcount><isnew>0</isnew></data><data><id>106</id><name>校园民谣</name><tcount>330</tcount><isnew>0</isnew></data><data><id>102</id><name>经典老歌</name><tcount>330</tcount><isnew>0</isnew></data><data><id>107</id><name>流金岁月</name><tcount>330</tcount><isnew>0</isnew></data><data><id>8</id><name>中国民乐</name><tcount>190</tcount><isnew>0</isnew></data><data><id>5</id><name>轻音乐</name><tcount>120</tcount><isnew>0</isnew></data><data><id>7</id><name>少儿歌曲</name><tcount>240</tcount><isnew>0</isnew></data><data><id>6</id><name>相声曲艺</name><tcount>60</tcount><isnew>0</isnew></data><data><id>17</id><name>分类试听dj</name><tcount>230</tcount><isnew>0</isnew></data></result>
+						</fx:XML></local:data>
+					</local:CateData>
+					<local:CateData >
+						<local:label><fx:String>热搜歌手</fx:String></local:label>
+						<local:data><fx:XML xmlns=""><result><count>30</count><data><id>600</id><name>S.H.E</name><tcount>127</tcount><isnew>0</isnew></data><data><id>601</id><name>周杰伦</name><tcount>125</tcount><isnew>0</isnew></data><data><id>602</id><name>凤凰传奇</name><tcount>37</tcount><isnew>0</isnew></data><data><id>603</id><name>王菲</name><tcount>173</tcount><isnew>0</isnew></data><data><id>604</id><name>刘德华</name><tcount>291</tcount><isnew>0</isnew></data><data><id>605</id><name>郑源</name><tcount>52</tcount><isnew>0</isnew></data><data><id>606</id><name>张学友</name><tcount>244</tcount><isnew>0</isnew></data><data><id>607</id><name>林俊杰</name><tcount>84</tcount><isnew>0</isnew></data><data><id>608</id><name>BY2</name><tcount>28</tcount><isnew>0</isnew></data><data><id>609</id><name>许嵩</name><tcount>44</tcount><isnew>0</isnew></data><data><id>610</id><name>梁静茹</name><tcount>125</tcount><isnew>0</isnew></data><data><id>611</id><name>王力宏</name><tcount>102</tcount><isnew>0</isnew></data><data><id>612</id><name>欢子</name><tcount>25</tcount><isnew>0</isnew></data><data><id>613</id><name>张靓颖</name><tcount>81</tcount><isnew>0</isnew></data><data><id>614</id><name>刘若英</name><tcount>97</tcount><isnew>0</isnew></data><data><id>615</id><name>邓丽君</name><tcount>82</tcount><isnew>0</isnew></data><data><id>616</id><name>小虎队</name><tcount>51</tcount><isnew>0</isnew></data><data><id>617</id><name>蔡依林</name><tcount>126</tcount><isnew>0</isnew></data><data><id>618</id><name>陈奕迅</name><tcount>155</tcount><isnew>0</isnew></data><data><id>619</id><name>五月天</name><tcount>86</tcount><isnew>0</isnew></data><data><id>620</id><name>刀郎</name><tcount>67</tcount><isnew>0</isnew></data><data><id>621</id><name>beyond</name><tcount>176</tcount><isnew>0</isnew></data><data><id>622</id><name>张杰</name><tcount>53</tcount><isnew>0</isnew></data><data><id>623</id><name>信乐团</name><tcount>33</tcount><isnew>0</isnew></data><data><id>624</id><name>张韶涵</name><tcount>64</tcount><isnew>0</isnew></data><data><id>625</id><name>李宇春</name><tcount>70</tcount><isnew>0</isnew></data><data><id>626</id><name>任贤齐</name><tcount>119</tcount><isnew>0</isnew></data><data><id>627</id><name>谭维维</name><tcount>34</tcount><isnew>0</isnew></data><data><id>628</id><name>丁当</name><tcount>24</tcount><isnew>0</isnew></data><data><id>629</id><name>孙燕姿</name><tcount>109</tcount><isnew>0</isnew></data></result>
+									</fx:XML></local:data>
+					</local:CateData>
+					<local:CateData >
+						<local:label><fx:String>开放专辑</fx:String></local:label>
+						<local:data><fx:XML xmlns=""><result><count>50</count><data><id>200</id><name>开车时听的歌</name><tcount>248</tcount><isnew>1</isnew></data><data><id>201</id><name>单身恋歌</name><tcount>171</tcount><isnew>0</isnew></data><data><id>202</id><name>初恋情歌 唯美故事</name><tcount>148</tcount><isnew>0</isnew></data><data><id>203</id><name>手机音乐情侣风</name><tcount>114</tcount><isnew>0</isnew></data><data><id>204</id><name>用歌声记录成长</name><tcount>139</tcount><isnew>0</isnew></data><data><id>205</id><name>校园音乐流行风</name><tcount>116</tcount><isnew>0</isnew></data><data><id>206</id><name>七夕音乐爱情</name><tcount>99</tcount><isnew>0</isnew></data><data><id>207</id><name>电台情歌红人馆</name><tcount>71</tcount><isnew>0</isnew></data><data><id>208</id><name>父爱无疆——父亲节音乐专辑</name><tcount>88</tcount><isnew>0</isnew></data><data><id>209</id><name>母爱无边——母亲节专辑</name><tcount>117</tcount><isnew>0</isnew></data><data><id>210</id><name>春</name><tcount>109</tcount><isnew>0</isnew></data><data><id>211</id><name>用心感恩</name><tcount>111</tcount><isnew>0</isnew></data><data><id>212</id><name>秋天的童话</name><tcount>121</tcount><isnew>0</isnew></data><data><id>213</id><name>我爱我的祖国</name><tcount>142</tcount><isnew>0</isnew></data><data><id>214</id><name>明月千里寄相思</name><tcount>122</tcount><isnew>0</isnew></data><data><id>215</id><name>08运动年</name><tcount>98</tcount><isnew>0</isnew></data><data><id>216</id><name>足球音乐show</name><tcount>109</tcount><isnew>0</isnew></data><data><id>217</id><name>篮球音乐派对</name><tcount>89</tcount><isnew>0</isnew></data><data><id>218</id><name>唱响奥运</name><tcount>167</tcount><isnew>0</isnew></data><data><id>219</id><name>唱一首歌，献给那些悲痛的心</name><tcount>68</tcount><isnew>0</isnew></data><data><id>220</id><name>听妈妈的话--母亲节专题</name><tcount>79</tcount><isnew>0</isnew></data><data><id>221</id><name>天娱掌门人合作开放专辑</name><tcount>92</tcount><isnew>0</isnew></data><data><id>222</id><name>纪念那消逝的爱恋</name><tcount>129</tcount><isnew>0</isnew></data><data><id>223</id><name>美丽的绿色——环保音乐专题</name><tcount>38</tcount><isnew>0</isnew></data><data><id>224</id><name>女人节音乐专题</name><tcount>172</tcount><isnew>0</isnew></data><data><id>225</id><name>中国风</name><tcount>151</tcount><isnew>0</isnew></data><data><id>226</id><name>金鼠耀新春</name><tcount>104</tcount><isnew>0</isnew></data><data><id>227</id><name>告别寒冷</name><tcount>135</tcount><isnew>0</isnew></data><data><id>228</id><name>温暖平安夜</name><tcount>96</tcount><isnew>0</isnew></data><data><id>229</id><name>网友最喜欢的100首影视动漫歌曲</name><tcount>500</tcount><isnew>0</isnew></data><data><id>230</id><name>网友最喜欢的100首日韩歌曲</name><tcount>500</tcount><isnew>0</isnew></data><data><id>231</id><name>网友最喜欢的100首英文歌曲</name><tcount>500</tcount><isnew>0</isnew></data><data><id>232</id><name>网友最喜欢的100首中文歌曲</name><tcount>500</tcount><isnew>0</isnew></data><data><id>233</id><name>冬季恋歌</name><tcount>86</tcount><isnew>0</isnew></data><data><id>234</id><name>光棍也开心</name><tcount>163</tcount><isnew>0</isnew></data><data><id>235</id><name>中秋节音乐专题</name><tcount>113</tcount><isnew>0</isnew></data><data><id>236</id><name>当梦想飞扬—奥运专题</name><tcount>125</tcount><isnew>0</isnew></data><data><id>237</id><name>香港回归十周年音乐庆典</name><tcount>85</tcount><isnew>0</isnew></data><data><id>238</id><name>父爱如山——父亲节专题</name><tcount>67</tcount><isnew>0</isnew></data><data><id>239</id><name>离别在雨季——毕业专题</name><tcount>121</tcount><isnew>0</isnew></data><data><id>240</id><name>快乐儿童节</name><tcount>80</tcount><isnew>0</isnew></data><data><id>241</id><name>饕餮盛宴——美食歌曲专题</name><tcount>53</tcount><isnew>0</isnew></data><data><id>242</id><name>妈妈我爱你</name><tcount>54</tcount><isnew>0</isnew></data><data><id>243</id><name>欢乐的旋律</name><tcount>82</tcount><isnew>0</isnew></data><data><id>244</id><name>hip-hop风暴</name><tcount>86</tcount><isnew>0</isnew></data><data><id>245</id><name>花开的声音——春季音乐专题</name><tcount>78</tcount><isnew>0</isnew></data><data><id>246</id><name>花样女人-2007妇女节专题</name><tcount>35</tcount><isnew>0</isnew></data><data><id>247</id><name>欢乐金猪年</name><tcount>74</tcount><isnew>0</isnew></data><data><id>248</id><name>爱在情人节</name><tcount>105</tcount><isnew>0</isnew></data><data><id>249</id><name>圣诞歌曲</name><tcount>58</tcount><isnew>0</isnew></data></result>
+									</fx:XML></local:data>
+					</local:CateData>
+					<local:CateData >
+						<local:label><fx:String>音乐掌门人</fx:String></local:label>
+						<local:data><fx:XML xmlns=""><result><count>40</count><data><id>340</id><name>我要。我要。做个温暖女子。</name><tcount>8</tcount><isnew>0</isnew></data><data><id>341</id><name>英 文 启 蒙 曲 。</name><tcount>7</tcount><isnew>0</isnew></data><data><id>342</id><name>╭我们、还可以孩子多久。</name><tcount>4</tcount><isnew>0</isnew></data><data><id>343</id><name>你因何忧郁呢、我的邮差</name><tcount>4</tcount><isnew>0</isnew></data><data><id>344</id><name>爱情这东西。时间积累的一切</name><tcount>4</tcount><isnew>0</isnew></data><data><id>345</id><name>〓〓〓摊开手心ゝ  全是想念。</name><tcount>5</tcount><isnew>0</isnew></data><data><id>346</id><name>感谢、你教会的那一点点坚强。</name><tcount>5</tcount><isnew>0</isnew></data><data><id>347</id><name>╭喝杯茶，听首歌......</name><tcount>6</tcount><isnew>0</isnew></data><data><id>348</id><name>我们的、那年，盛大的回忆！</name><tcount>4</tcount><isnew>0</isnew></data><data><id>349</id><name>我们、不死不活的爱情</name><tcount>4</tcount><isnew>0</isnew></data><data><id>350</id><name>人生之若如初见</name><tcount>5</tcount><isnew>0</isnew></data><data><id>351</id><name>╭女人歌......</name><tcount>7</tcount><isnew>0</isnew></data><data><id>352</id><name>这些歌，让你想到什么。</name><tcount>9</tcount><isnew>0</isnew></data><data><id>353</id><name>若是梦，为何念念忘了醒来</name><tcount>8</tcount><isnew>0</isnew></data><data><id>354</id><name>思 念 如 烟 丶 在 心 中 刻 上 你 的 名 字</name><tcount>5</tcount><isnew>0</isnew></data><data><id>355</id><name>如我所说，你是我一种惯性回忆。</name><tcount>7</tcount><isnew>0</isnew></data><data><id>356</id><name>初夏，时光碎片遗失的角落，忆童年</name><tcount>6</tcount><isnew>0</isnew></data><data><id>357</id><name>一个人失忆</name><tcount>5</tcount><isnew>0</isnew></data><data><id>358</id><name>闭起眼睛会想起谁</name><tcount>5</tcount><isnew>0</isnew></data><data><id>359</id><name>忆、童年</name><tcount>4</tcount><isnew>0</isnew></data><data><id>360</id><name>所谓的坚强、不过是在逞强。</name><tcount>4</tcount><isnew>0</isnew></data><data><id>361</id><name>【伤感欧美】聆听温情之声 感受纤细情感</name><tcount>7</tcount><isnew>0</isnew></data><data><id>362</id><name>一闭眼。 满世界的星星点点</name><tcount>5</tcount><isnew>0</isnew></data><data><id>363</id><name>の遇见幸福的机率 千万分之一</name><tcount>5</tcount><isnew>0</isnew></data><data><id>364</id><name>我听、第一次他们的歌。</name><tcount>6</tcount><isnew>0</isnew></data><data><id>365</id><name>**-人生若只如初见</name><tcount>5</tcount><isnew>0</isnew></data><data><id>366</id><name>和世界脱节。</name><tcount>4</tcount><isnew>0</isnew></data><data><id>367</id><name>我等你，等到鲜花烂成泥。</name><tcount>7</tcount><isnew>0</isnew></data><data><id>368</id><name>莞尔一笑，转瞬苍白</name><tcount>4</tcount><isnew>0</isnew></data><data><id>369</id><name>所谓十八、这年纪真傻、</name><tcount>7</tcount><isnew>0</isnew></data><data><id>370</id><name>、过 去 的 一 页，能 不 翻 就 不 要 翻，翻 落 了 灰 尘 会 迷 了 双 眼。</name><tcount>5</tcount><isnew>0</isnew></data><data><id>371</id><name>我把自己封锁，只因不想与你相遇</name><tcount>6</tcount><isnew>0</isnew></data><data><id>372</id><name>你 总 会 听 见 我 赤 子 之 心。</name><tcount>6</tcount><isnew>0</isnew></data><data><id>373</id><name>望穿透你的瞳孔、穿透你的魂</name><tcount>6</tcount><isnew>0</isnew></data><data><id>374</id><name>你听你听、一个人的世界，安静的可以听见花开的声音。</name><tcount>4</tcount><isnew>0</isnew></data><data><id>375</id><name>南国的孩子，有不能负的性子。</name><tcount>5</tcount><isnew>0</isnew></data><data><id>376</id><name>の我爱你的时候 没心没肺 。</name><tcount>3</tcount><isnew>0</isnew></data><data><id>377</id><name>梦 中 你 的 脸 , 过 往 的 云 烟.</name><tcount>6</tcount><isnew>0</isnew></data><data><id>378</id><name>虽然多愁善感，但却是个坚强的女人。</name><tcount>8</tcount><isnew>0</isnew></data><data><id>379</id><name>给我一个晚安吻  kiss good night。</name><tcount>7</tcount><isnew>0</isnew></data></result>
+									</fx:XML></local:data>
+					</local:CateData>
+				</s:ArrayCollection>
+			</s:dataProvider>
+		</s:ComboBox>
+		<s:List id="slist" left="0" top="35" width="200" bottom="0" dataProvider="{new XMLListCollection(cateBox.selectedItem.data.data)}" selectedIndex="0">
+			<s:itemRenderer>
+				<fx:Component>
+					<s:ItemRenderer minHeight="30">
+						<s:Label text="{data.name}" verticalCenter="0" left="5" lineBreak="toFit" />
+					</s:ItemRenderer>
+				</fx:Component>
+			</s:itemRenderer>
+		</s:List>	
+		<s:Group left="205" right="0" top="0" bottom="35">
+			<s:TextInput  height="30" id="urlInput"  left="0" top="0" right="150" text="{loadbt_clickHandler(urlParser(slist.selectedItem))}" />
+			<s:Button label="加载" height="30" id="loadbt" right="25" width="100" top="0" click="loadbt_clickHandler(event)" enabled="{urlInput.text.length>0}" />
+			<s:List left="0" id="dlist" right="0" top="35" bottom="0" dataProvider="{listServiceResult}">
+				<s:itemRenderer>
+					<fx:Component>
+						<s:ItemRenderer minHeight="30">
+							<fx:Script>
+								<![CDATA[
+									public function pareseName(str:String):String{
+										str=str.replace("$$", "-");
+										str=str.replace("$$$$", "");
+										return str;
+									}
+
+									protected function button1_clickHandler(event:MouseEvent):void
+									{
+										// TODO Auto-generated method stub
+									}
+
+								]]>
+							</fx:Script>
+							<s:layout>
+								<s:HorizontalLayout verticalAlign="middle"/>
+							</s:layout>
+							<s:Button label="播放" click="button1_clickHandler(event)" visible="false" includeInLayout="false" />
+							<s:Label text="{pareseName(data.name)}" />
+						</s:ItemRenderer>
+					</fx:Component>
+				</s:itemRenderer>
+			</s:List>
+		</s:Group>
+		<s:Group left="0" right="0" height="30" bottom="0">
+			<s:Button label="下载全部{listServiceResult.length}首歌" right="5" verticalCenter="0" id="downloadAll" enabled="{listServiceResult.length>0}" click="downloadAll_clickHandler(event)"/>
+		</s:Group>
+	</s:Group>
+	
+	<s:Group includeIn="downloading" left="0"  bottom="0" right="0" top="0">
+		<mx:ProgressBar left="0" id="progress" right="100" top="0"
+							mode="manual" height="30" labelPlacement="center" indeterminate="false"
+							label="loading"/>
+		<s:Button label="{out.visible?'hide log':'show log'}" right="5" top="0" height="30" click="out.visible=!out.visible"/>
+		<s:List left="0" right="0" top="35" bottom="35" id="downloadList" dataProvider="{list}">
+			<s:itemRenderer>
+				<fx:Component>
+					<s:ItemRenderer minHeight="30">
+						<fx:Script>
+							<![CDATA[
+								import mx.rpc.events.ResultEvent;
+								protected function button2_clickHandler(event:MouseEvent):void
+								{
+									this.dispatchEvent(new ResultEvent("audoPlay",true,true,data));
+								}
+
+							]]>
+						</fx:Script>
+						<s:Rect left="0" right="{width-width*data.loadPercent/100}" top="0" bottom="0">
+							<s:fill>
+								<s:SolidColor color="0x009900" alpha="0.2"/>
+							</s:fill>
+						</s:Rect>
+						<s:Group left="0" right="0" top="0" bottom="0">
+							<s:layout>
+								<s:HorizontalLayout verticalAlign="middle" />
+							</s:layout>
+							<s:Button label="播放" click="button2_clickHandler(event)" includeInLayout="{data.loadPercent>=100}" visible="{data.loadPercent>=100}" />
+							<s:Label text="{data.name}" verticalCenter="0"/>
+							<s:Label text="{data.stutas}" verticalCenter="0"/>
+						</s:Group>
+					</s:ItemRenderer>
+				</fx:Component>
+			</s:itemRenderer>
+		</s:List>
+		<s:TextArea left="0" text="" right="0" top="35"
+					lineBreak="explicit" bottom="35" visible="false" id="out"/>
+		<s:Group left="0" right="0" height="30" bottom="0">
+			<local:AudioPlayer id="player" height="30" left="5" right="150" skinClass="AudioPlayerSkin" />
+			<s:Button label="取消下载" right="5" verticalCenter="0" id="canceldAll" click="canceldAll_clickHandler(event)"/>
+		</s:Group>
+	</s:Group>
+	
+</s:WindowedApplication>
